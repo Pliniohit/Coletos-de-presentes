@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Natal AR - Caça Presentes</title>
+    <title>Caça-Presentes AR</title>
     <style>
         body, html {
             margin: 0;
@@ -13,10 +13,10 @@
             overflow: hidden;
             background-color: #1a1a1a;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            touch-action: none;
+            touch-action: none; /* Importante: Bloqueia zoom e scroll */
         }
 
-        /* VÍDEO (CÂMERA) */
+        /* ONDE A MÁGICA ACONTECE: A Câmera fica no fundo */
         #camera-video {
             position: absolute;
             top: 0;
@@ -27,32 +27,18 @@
             z-index: 1;
         }
 
-        /* FILTRO DE NATAL */
-        #christmas-filter {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 2;
-            pointer-events: none;
-            background: radial-gradient(circle, rgba(255, 235, 200, 0.1) 30%, rgba(200, 30, 30, 0.4) 90%);
-            backdrop-filter: sepia(0.4) contrast(1.1) brightness(1.1);
-            mix-blend-mode: hard-light;
-        }
-
-        /* JOGO */
+        /* O JOGO: Fica POR CIMA da câmera */
         #game-canvas {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: 3;
+            z-index: 2; /* Garante que o jogo receba o toque, não o vídeo */
             background: transparent;
         }
 
-        /* UI (PLACAR) */
+        /* UI: Placar e Botões */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -60,20 +46,20 @@
             width: 100%;
             height: 100%;
             z-index: 10;
-            pointer-events: none;
+            pointer-events: none; /* Permite clicar através da UI */
             display: flex;
             flex-direction: column;
             justify-content: space-between;
         }
 
-        /* MENU / TELAS */
+        /* Tela de Início / Game Over */
         #overlay {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(160, 0, 0, 0.95);
+            background: rgba(0, 50, 0, 0.9); /* Verde escuro festivo */
             z-index: 20;
             display: flex;
             flex-direction: column;
@@ -87,31 +73,33 @@
 
         h1 {
             font-size: 2.5rem;
-            color: #FFD700;
-            text-shadow: 2px 2px #006400;
+            color: #ff3333;
+            text-shadow: 2px 2px white;
             margin-bottom: 10px;
         }
 
         p {
-            font-size: 1.1rem;
+            font-size: 1.2rem;
             line-height: 1.5;
-            margin-bottom: 20px;
-            max-width: 400px;
+            margin-bottom: 30px;
         }
 
         button {
-            background: #008000;
+            background: #ff3333;
             color: white;
-            border: 2px solid #FFD700;
-            padding: 15px 40px;
-            font-size: 1.3rem;
+            border: 2px solid white;
+            padding: 20px 50px;
+            font-size: 1.5rem;
             border-radius: 50px;
             font-weight: bold;
             cursor: pointer;
             box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-            margin-top: 10px;
+            pointer-events: auto;
         }
-        button:active { transform: scale(0.95); }
+
+        button:active {
+            transform: scale(0.95);
+        }
 
         .hud {
             padding: 20px;
@@ -123,25 +111,25 @@
             justify-content: space-between;
         }
 
-        /* ÁREA DE DEBUG (PARA VOCÊ VER O ERRO) */
-        .debug-console {
-            margin-top: 20px;
-            font-size: 0.9rem;
-            color: #ffcccc;
-            background: rgba(0,0,0,0.5);
-            padding: 10px;
-            border-radius: 5px;
-            max-width: 90%;
-            word-wrap: break-word;
+        .camera-status {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #aaa;
         }
     </style>
 </head>
 <body>
 
+    <!-- Vídeo da Câmera -->
     <video id="camera-video" autoplay playsinline muted></video>
-    <div id="christmas-filter"></div>
+
+    <!-- Área do Jogo -->
     <canvas id="game-canvas"></canvas>
 
+    <!-- Interface -->
     <div id="ui-layer">
         <div class="hud">
             <span style="color:#FFD700">🎁 <span id="score">0</span></span>
@@ -149,21 +137,15 @@
         </div>
     </div>
 
+    <!-- Menu -->
     <div id="overlay">
-        <h1>🎄 Caça-Presentes 🎅</h1>
+        <h1>Caça-Presentes 🎁</h1>
         <p>
-            O Papai Noel derrubou os presentes!<br>
-            Use sua câmera para encontrá-los.
+            Agache e pegue os presentes<br>antes que toquem o chão!<br><br>
+            <small>Se a câmera não abrir, jogaremos com fundo colorido.</small>
         </p>
-        
-        <button id="start-btn">LIGAR CÂMERA E JOGAR</button>
-        
-        <!-- Botão extra caso falhe -->
-        <button id="retry-cam" style="display:none; background:#ff4444; font-size:1rem; margin-top:10px;">
-            ⚠️ Tentar Câmera Novamente
-        </button>
-
-        <div class="debug-console" id="debug-log">Status: Aguardando início...</div>
+        <button id="start-btn">COMEÇAR</button>
+        <div class="camera-status" id="cam-status">Aguardando permissão...</div>
     </div>
 
     <script>
@@ -172,11 +154,9 @@
         const video = document.getElementById('camera-video');
         const overlay = document.getElementById('overlay');
         const startBtn = document.getElementById('start-btn');
-        const retryBtn = document.getElementById('retry-cam');
         const scoreEl = document.getElementById('score');
         const livesEl = document.getElementById('lives');
-        const debugLog = document.getElementById('debug-log');
-        const filterLayer = document.getElementById('christmas-filter');
+        const camStatus = document.getElementById('cam-status');
 
         let width, height;
         let gameActive = false;
@@ -189,10 +169,13 @@
 
         // Entidades
         let presents = [];
-        let effects = [];
-        const giftTypes = ['🎁', '📦', '🎀', '🎅', '🎄', '🧸', '🛍️', '🍪', '🥛'];
-        const colors = ['#ff0000', '#00ff00', '#ffffff', '#ffff00', '#FFD700'];
+        let effects = []; // Explosões e feedback de toque
 
+        // Emojis de presentes
+        const giftTypes = ['🎁', '📦', '🎀', '🧸', '🛍️', '💎'];
+        const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff'];
+
+        // Ajuste de Tela
         function resize() {
             width = window.innerWidth;
             height = window.innerHeight;
@@ -202,77 +185,49 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // --- SISTEMA DE LOG PARA DEBUG ---
-        function log(msg) {
-            console.log(msg);
-            debugLog.innerHTML = msg;
-        }
-
-        // --- INICIAR CÂMERA (ROBUSTO) ---
+        // --- 1. CONFIGURAÇÃO DA CÂMERA (Mais Robusta) ---
         async function startCamera() {
-            log("Solicitando câmera...");
-            retryBtn.style.display = 'none';
-
-            // Verifica se é HTTPS (obrigatório para câmera)
-            if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-                log("ERRO: Use HTTPS! O GitHub Pages suporta, verifique a URL.");
-                return false;
-            }
-
+            camStatus.innerText = "Tentando acessar câmera...";
             try {
-                // Configurações específicas para mobile
-                const constraints = {
-                    audio: false,
-                    video: {
-                        facingMode: 'environment', // Câmera traseira
+                // Tenta câmera traseira primeiro
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'environment',
                         width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
-                };
-
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
+                        height: { ideal: 720 } 
+                    },
+                    audio: false
+                });
                 
-                // Promessa de play para garantir que rodou
+                video.srcObject = stream;
+                // Importante para iOS: play() manual
                 await video.play();
                 
                 cameraWorks = true;
-                log("Câmera ativa! Divirta-se!");
-                video.style.display = 'block';
-                filterLayer.style.display = 'block';
-                return true;
-
+                camStatus.innerText = "Câmera Ativa!";
+                // Se a câmera funcionar, o vídeo aparece. Se não, fica escondido atrás do fundo fallback.
             } catch (err) {
-                console.error(err);
-                
-                let errorMsg = "Erro desconhecido na câmera.";
-                if (err.name === 'NotAllowedError') errorMsg = "Permissão NEGADA. Reinicie as permissões do site.";
-                if (err.name === 'NotFoundError') errorMsg = "Nenhuma câmera encontrada.";
-                if (err.name === 'NotReadableError') errorMsg = "A câmera já está em uso por outro app.";
-                
-                log("⚠️ " + errorMsg + " Usando modo gráfico.");
-                
-                // Mostra botão de tentar de novo
-                retryBtn.style.display = 'inline-block';
-                
+                console.error("Erro na câmera:", err);
                 cameraWorks = false;
-                video.style.display = 'none';
-                filterLayer.style.display = 'none';
-                return false;
+                camStatus.innerText = "Sem câmera. Usando modo Gráfico.";
+                video.style.display = 'none'; // Esconde o vídeo quebrado
             }
         }
 
-        // --- LÓGICA DO JOGO ---
+        // --- 2. CLASSES DO JOGO ---
+
         class Present {
             constructor() {
-                this.size = 60 + Math.random() * 30;
+                this.size = 60 + Math.random() * 30; // Grandes para facilitar o toque
                 this.x = Math.random() * (width - this.size);
-                this.y = -100;
+                this.y = -100; // Começa acima da tela
                 this.speed = (3 + Math.random() * 2) * difficulty;
                 this.emoji = giftTypes[Math.floor(Math.random() * giftTypes.length)];
                 this.rotation = Math.random();
                 this.rotSpeed = (Math.random() - 0.5) * 0.05;
                 this.markedForDeletion = false;
+                
+                // Adiciona uma oscilação lateral
                 this.wobble = Math.random() * Math.PI * 2;
             }
 
@@ -282,6 +237,7 @@
                 this.wobble += 0.05;
                 this.x += Math.sin(this.wobble) * 2;
 
+                // Passou do chão?
                 if (this.y > height) {
                     this.markedForDeletion = true;
                     takeDamage();
@@ -292,12 +248,16 @@
                 ctx.save();
                 ctx.translate(this.x + this.size/2, this.y + this.size/2);
                 ctx.rotate(this.rotation);
-                ctx.shadowColor = "#FFD700";
-                ctx.shadowBlur = 20;
+                
+                // Brilho atrás do presente para destacar da câmera
+                ctx.shadowColor = "white";
+                ctx.shadowBlur = 15;
+                
                 ctx.font = `${this.size}px Arial`;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 ctx.fillText(this.emoji, 0, 0);
+                
                 ctx.restore();
             }
         }
@@ -306,125 +266,187 @@
             constructor(x, y, type) {
                 this.x = x;
                 this.y = y;
-                this.type = type;
+                this.type = type; // 'touch' ou 'collect'
                 this.life = 1.0;
                 this.size = type === 'touch' ? 10 : 50;
                 this.color = colors[Math.floor(Math.random() * colors.length)];
             }
+
             update() {
                 this.life -= 0.05;
                 if (this.type === 'touch') this.size += 5;
                 if (this.type === 'collect') this.size += 2;
             }
+
             draw() {
                 ctx.globalAlpha = this.life;
                 ctx.lineWidth = 3;
+                
                 if (this.type === 'touch') {
+                    // Círculo branco onde tocou
                     ctx.strokeStyle = "white";
                     ctx.beginPath();
                     ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
                     ctx.stroke();
                 } else {
+                    // Explosão de confete simples
                     ctx.fillStyle = this.color;
                     ctx.beginPath();
                     ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
                     ctx.fill();
-                    ctx.fillStyle = "#FFD700";
-                    ctx.font = "bold 30px Arial";
+                    // Texto de pontuação
+                    ctx.fillStyle = "white";
+                    ctx.font = "30px Arial";
                     ctx.fillText("+10", this.x, this.y - this.size);
                 }
                 ctx.globalAlpha = 1.0;
             }
         }
 
+        // --- 3. INPUT (Resolver problemas de interação) ---
+        
         function handleInput(e) {
             if (!gameActive) return;
-            e.preventDefault();
+            e.preventDefault(); // Previne comportamento padrão (zoom/scroll)
+
+            // Pega coordenadas de toque ou mouse
             let inputs = [];
             if (e.type === 'touchstart') {
                 for (let i = 0; i < e.changedTouches.length; i++) {
-                    inputs.push({ x: e.changedTouches[i].clientX, y: e.changedTouches[i].clientY });
+                    inputs.push({
+                        x: e.changedTouches[i].clientX,
+                        y: e.changedTouches[i].clientY
+                    });
                 }
             } else {
                 inputs.push({ x: e.clientX, y: e.clientY });
             }
 
+            // Processa cada toque
             inputs.forEach(pos => {
+                // 1. Feedback Visual (Rastro) - Para ver se o toque funcionou
                 effects.push(new Effect(pos.x, pos.y, 'touch'));
+
+                // 2. Colisão
+                let hit = false;
                 for (let i = presents.length - 1; i >= 0; i--) {
                     let p = presents[i];
-                    let dist = Math.sqrt(Math.pow(pos.x - (p.x + p.size/2), 2) + Math.pow(pos.y - (p.y + p.size/2), 2));
-                    if (dist < p.size * 0.9) {
+                    // Distância entre toque e centro do presente
+                    let dx = pos.x - (p.x + p.size/2);
+                    let dy = pos.y - (p.y + p.size/2);
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+
+                    // Margem generosa (hitbox maior que o visual)
+                    if (dist < p.size * 0.8) {
                         presents.splice(i, 1);
                         collectPresent(pos.x, pos.y);
-                        break;
+                        hit = true;
+                        break; // Só pega um por toque
                     }
                 }
             });
         }
 
+        // --- 4. LÓGICA DO JOGO ---
+
         function collectPresent(x, y) {
             score += 10;
             scoreEl.innerText = score;
             effects.push(new Effect(x, y, 'collect'));
-            if (score % 50 === 0) difficulty += 0.2;
+            
+            // Aumenta dificuldade
+            if (score % 50 === 0) {
+                difficulty += 0.2;
+            }
         }
 
         function takeDamage() {
             lives--;
             livesEl.innerText = lives;
+            
+            // Flash vermelho na tela
             let flash = document.createElement('div');
-            Object.assign(flash.style, {position:'absolute', top:0, left:0, width:'100%', height:'100%', background:'red', opacity:0.4, pointerEvents:'none', zIndex:15});
+            flash.style.position = 'absolute';
+            flash.style.top =0; flash.style.left=0;
+            flash.style.width='100%'; flash.style.height='100%';
+            flash.style.background='red';
+            flash.style.opacity=0.3;
+            flash.style.pointerEvents='none';
+            flash.style.zIndex=15;
             document.body.appendChild(flash);
             setTimeout(() => flash.remove(), 200);
+
             if (lives <= 0) gameOver();
         }
 
         function gameOver() {
             gameActive = false;
             overlay.innerHTML = `
-                <h1>🎄 Fim de Jogo! 🎄</h1>
-                <p>Pontuação: ${score} 🎁</p>
-                <button onclick="window.location.reload()">Jogar Novamente</button>
+                <h1>Fim de Jogo!</h1>
+                <p>Você salvou ${score/10} presentes! 🎁</p>
+                <button onclick="resetGame()">Jogar Novamente</button>
             `;
             overlay.style.display = 'flex';
         }
 
+        function resetGame() {
+            window.location.reload();
+        }
+
+        // --- 5. LOOP PRINCIPAL ---
+
         function loop(timestamp) {
             if (!gameActive) return;
+
             let deltaTime = timestamp - lastTime;
             lastTime = timestamp;
+
+            // Limpa o canvas
             ctx.clearRect(0, 0, width, height);
 
+            // Se a câmera não funcionou, desenha um fundo
             if (!cameraWorks) {
-                // Fallback Natalino
-                let grad = ctx.createLinearGradient(0,0,0,height);
-                grad.addColorStop(0, "#004d00");
-                grad.addColorStop(1, "#800000");
-                ctx.fillStyle = grad;
+                // Fundo gradiente animado se não tiver câmera
+                let hue = (Date.now() / 50) % 360;
+                ctx.fillStyle = `hsl(${hue}, 20%, 20%)`;
                 ctx.fillRect(0, 0, width, height);
-                ctx.fillStyle = "rgba(255,255,255,0.2)";
-                for(let i=0; i<30; i++) ctx.fillRect(Math.random()*width, Math.random()*height, 2, 2); // Neve estática leve
+                
+                ctx.fillStyle = "rgba(255,255,255,0.1)";
+                ctx.font = "20px Arial";
+                ctx.fillText("Modo sem câmera", width/2, height - 20);
             }
 
+            // Cria presentes
             if (timestamp - spawnTimer > 1500 / difficulty) {
                 presents.push(new Present());
                 spawnTimer = timestamp;
             }
 
-            presents.forEach(p => { p.update(); p.draw(); });
+            // Atualiza Presentes
+            presents.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Limpa presentes deletados
             presents = presents.filter(p => !p.markedForDeletion);
-            effects.forEach((e, index) => { e.update(); e.draw(); if (e.life <= 0) effects.splice(index, 1); });
+
+            // Atualiza Efeitos
+            effects.forEach((e, index) => {
+                e.update();
+                e.draw();
+                if (e.life <= 0) effects.splice(index, 1);
+            });
 
             requestAnimationFrame(loop);
         }
 
-        // STARTUP
-        async function initGame() {
-            // Tenta iniciar a câmera
+        // --- INICIALIZAÇÃO ---
+
+        startBtn.addEventListener('click', async () => {
+            // Tenta iniciar a câmera ao clicar no botão (melhor para mobile)
             await startCamera();
             
-            // Inicia o jogo independente do resultado da câmera
             overlay.style.display = 'none';
             score = 0;
             lives = 3;
@@ -434,17 +456,12 @@
             gameActive = true;
             lastTime = performance.now();
             requestAnimationFrame(loop);
-        }
-
-        startBtn.addEventListener('click', initGame);
-        retryBtn.addEventListener('click', () => {
-            retryBtn.style.display = 'none';
-            log("Tentando novamente...");
-            startCamera();
         });
 
+        // Eventos de Input (Mouse e Touch)
         window.addEventListener('mousedown', handleInput);
         window.addEventListener('touchstart', handleInput, { passive: false });
+
     </script>
 </body>
 </html>
