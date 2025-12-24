@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Natal AR - Caça Presentes</title>
+    
+    <!-- Bibliotecas para Detecção Facial (TensorFlow.js + BlazeFace) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+
     <style>
         body, html {
             margin: 0;
@@ -86,7 +91,7 @@
         }
 
         h1 {
-            font-size: 2.5rem;
+            font-size: clamp(1.8rem, 5vw, 2.5rem); /* Título também responsivo */
             color: #FFD700;
             text-shadow: 2px 2px #006400;
             margin-bottom: 10px;
@@ -187,6 +192,12 @@
         let spawnTimer = 0;
         let cameraWorks = false;
 
+        // IA de Rosto
+        let faceModel = null;
+        let detectedFaces = [];
+        let lastFaceDetectTime = 0;
+        const FACE_DETECT_INTERVAL = 150; // Detecta a cada 150ms para não travar o celular
+
         // Entidades
         let presents = [];
         let effects = [];
@@ -208,6 +219,18 @@
             debugLog.innerHTML = msg;
         }
 
+        // --- INICIAR MODELO DE ROSTO ---
+        async function loadFaceModel() {
+            try {
+                log("Carregando gorro do Papai Noel...");
+                faceModel = await blazeface.load();
+                log("Modelo de rosto carregado!");
+            } catch (e) {
+                console.error("Erro ao carregar IA de rosto:", e);
+                log("Aviso: Detecção facial indisponível.");
+            }
+        }
+
         // --- INICIAR CÂMERA (ROBUSTO) ---
         async function startCamera() {
             log("Solicitando câmera...");
@@ -224,7 +247,7 @@
                 const constraints = {
                     audio: false,
                     video: {
-                        facingMode: 'environment', // Câmera traseira
+                        facingMode: 'user', // Mudamos para USER (Frontal) para ver o rosto e o gorro!
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
                     }
@@ -237,7 +260,7 @@
                 await video.play();
                 
                 cameraWorks = true;
-                log("Câmera ativa! Divirta-se!");
+                log("Câmera frontal ativa!");
                 video.style.display = 'block';
                 filterLayer.style.display = 'block';
                 return true;
@@ -260,6 +283,112 @@
                 filterLayer.style.display = 'none';
                 return false;
             }
+        }
+
+        // --- DETECÇÃO FACIAL ---
+        async function detectFaces(timestamp) {
+            if (!faceModel || !cameraWorks || !video.readyState === 4) return;
+            
+            // Throttle para performance (não roda todo frame)
+            if (timestamp - lastFaceDetectTime < FACE_DETECT_INTERVAL) return;
+            lastFaceDetectTime = timestamp;
+
+            const returnTensors = false;
+            const predictions = await faceModel.estimateFaces(video, returnTensors);
+            
+            if (predictions.length > 0) {
+                detectedFaces = predictions;
+            } else {
+                // Mantém o rosto antigo por um tempinho para evitar piscar, ou limpa se demorar
+                if (timestamp - lastFaceDetectTime > 500) detectedFaces = [];
+            }
+        }
+
+        function drawSantaHat(ctx, face) {
+            const start = face.topLeft;
+            const end = face.bottomRight;
+            const faceWidth = end[0] - start[0]; // width no video
+            // const faceHeight = end[1] - start[1]; // height no video
+
+            // MATEMÁTICA DE MAPEAMENTO (Object-Fit: Cover)
+            // Precisamos traduzir as coordenadas do vídeo (ex: 640x480) para a tela (ex: 360x800)
+            const videoW = video.videoWidth;
+            const videoH = video.videoHeight;
+            const screenW = canvas.width;
+            const screenH = canvas.height;
+
+            const videoRatio = videoW / videoH;
+            const screenRatio = screenW / screenH;
+            
+            let scale, offsetX, offsetY;
+
+            if (screenRatio > videoRatio) {
+                // Tela é mais larga que o vídeo (corta topo/base)
+                scale = screenW / videoW;
+                offsetX = 0;
+                offsetY = (videoH * scale - screenH) / 2;
+            } else {
+                // Tela é mais alta que o vídeo (corta laterais)
+                scale = screenH / videoH;
+                offsetX = (videoW * scale - screenW) / 2;
+                offsetY = 0;
+            }
+
+            // Converter coordenadas do rosto
+            // Como é câmera frontal, às vezes precisa espelhar o X dependendo do CSS. 
+            // O CSS atual não tem scaleX(-1), então assume padrão.
+            // Se o rosto parecer invertido, ajustamos o X.
+            
+            const faceX = (start[0] * scale) - offsetX;
+            const faceY = (start[1] * scale) - offsetY;
+            const scaledFaceWidth = faceWidth * scale;
+
+            // Desenhar o Gorro
+            ctx.save();
+            
+            // Posição: Centro da cabeça, no topo
+            const hatCenterX = faceX + (scaledFaceWidth / 2);
+            const hatBottomY = faceY + (scaledFaceWidth * 0.2); // Um pouco abaixo do topo da testa
+            const hatWidth = scaledFaceWidth * 1.5; // Mais largo que a cabeça
+            const hatHeight = hatWidth * 1.2;
+
+            ctx.translate(hatCenterX, hatBottomY);
+            
+            // Sombra
+            ctx.shadowColor = "rgba(0,0,0,0.5)";
+            ctx.shadowBlur = 10;
+
+            // 1. Parte Vermelha (Triângulo Curvo)
+            ctx.beginPath();
+            ctx.moveTo(-hatWidth/2, 0);
+            // Curva para a ponta caída
+            ctx.quadraticCurveTo(0, -hatHeight, hatWidth/2, 0); 
+            // Curva da base (testa)
+            ctx.quadraticCurveTo(0, -20, -hatWidth/2, 0);
+            ctx.fillStyle = "#D42426"; // Vermelho Natal
+            ctx.fill();
+
+            // 2. Ponta caída (dobra do gorro)
+            ctx.beginPath();
+            ctx.moveTo(hatWidth/4, -hatHeight/1.5);
+            ctx.quadraticCurveTo(hatWidth/1.2, -hatHeight/2, hatWidth/1.4, -hatHeight/4);
+            ctx.lineTo(0, -hatHeight/2); // Volta pra dentro pra esconder
+            ctx.fillStyle = "#D42426";
+            ctx.fill();
+
+            // 3. Pompom (na ponta da dobra)
+            ctx.beginPath();
+            ctx.arc(hatWidth/1.4, -hatHeight/4, hatWidth/6, 0, Math.PI*2);
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fill();
+
+            // 4. Base Branca (Felpuda)
+            ctx.beginPath();
+            ctx.roundRect(-hatWidth/1.8, -10, hatWidth * 1.1, hatWidth/4, 20);
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fill();
+
+            ctx.restore();
         }
 
         // --- LÓGICA DO JOGO ---
@@ -382,10 +511,11 @@
 
         function gameOver() {
             gameActive = false;
+            // AQUI ESTÁ A ALTERAÇÃO: Font-size usando CLAMP para responsividade
             overlay.innerHTML = `
                 <h1>🎄 Fim de Jogo! 🎄</h1>
                 <p style="font-size: 1.5rem">Pontuação: ${score} 🎁</p>
-                <p style="margin: 30px auto; max-width: 95%; font-size: 2.2rem; line-height: 1.2; color: #ffeb3b; text-shadow: 2px 2px 5px rgba(0,0,0,0.9);">
+                <p style="margin: 20px auto; max-width: 90%; font-size: clamp(1.1rem, 4vw + 0.5rem, 2.2rem); line-height: 1.3; color: #ffeb3b; text-shadow: 2px 2px 5px rgba(0,0,0,0.9);">
                     A <strong>Metaverse Agency</strong> deseja a você um Feliz Natal!<br>
                     Independentemente do número de presentes, que haja muita alegria!
                 </p>
@@ -408,7 +538,13 @@
                 ctx.fillStyle = grad;
                 ctx.fillRect(0, 0, width, height);
                 ctx.fillStyle = "rgba(255,255,255,0.2)";
-                for(let i=0; i<30; i++) ctx.fillRect(Math.random()*width, Math.random()*height, 2, 2); // Neve estática leve
+                for(let i=0; i<30; i++) ctx.fillRect(Math.random()*width, Math.random()*height, 2, 2); 
+            } else {
+                // Tenta detectar rostos se a câmera estiver ligada
+                detectFaces(timestamp);
+                
+                // Desenha os gorros detectados
+                detectedFaces.forEach(face => drawSantaHat(ctx, face));
             }
 
             if (timestamp - spawnTimer > 1500 / difficulty) {
@@ -425,6 +561,9 @@
 
         // STARTUP
         async function initGame() {
+            // Carrega modelo de rosto em paralelo
+            loadFaceModel();
+
             // Tenta iniciar a câmera
             await startCamera();
             
