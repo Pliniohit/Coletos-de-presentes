@@ -88,10 +88,11 @@
             text-align: center;
             padding: 20px;
             pointer-events: auto;
+            overflow-y: auto; /* Permite scroll se a foto for grande */
         }
 
         h1 {
-            font-size: clamp(1.8rem, 5vw, 2.5rem); /* Título também responsivo */
+            font-size: clamp(1.8rem, 5vw, 2.5rem);
             color: #FFD700;
             text-shadow: 2px 2px #006400;
             margin-bottom: 10px;
@@ -115,8 +116,24 @@
             cursor: pointer;
             box-shadow: 0 5px 15px rgba(0,0,0,0.5);
             margin-top: 10px;
+            margin-bottom: 10px;
         }
         button:active { transform: scale(0.95); }
+
+        /* Estilo para o botão de download */
+        .download-btn {
+            display: inline-block;
+            background: #D42426;
+            color: white;
+            text-decoration: none;
+            padding: 15px 40px;
+            font-size: 1.3rem;
+            border-radius: 50px;
+            font-weight: bold;
+            border: 2px solid white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            margin-top: 10px;
+        }
 
         .hud {
             padding: 20px;
@@ -128,7 +145,16 @@
             justify-content: space-between;
         }
 
-        /* ÁREA DE DEBUG (PARA VOCÊ VER O ERRO) */
+        /* Foto final */
+        #final-photo {
+            max-width: 80%;
+            max-height: 50vh;
+            border: 5px solid #FFD700;
+            border-radius: 10px;
+            margin: 10px 0;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
         .debug-console {
             margin-top: 20px;
             font-size: 0.9rem;
@@ -163,7 +189,6 @@
         
         <button id="start-btn">LIGAR CÂMERA E JOGAR</button>
         
-        <!-- Botão extra caso falhe -->
         <button id="retry-cam" style="display:none; background:#ff4444; font-size:1rem; margin-top:10px;">
             ⚠️ Tentar Câmera Novamente
         </button>
@@ -196,7 +221,7 @@
         let faceModel = null;
         let detectedFaces = [];
         let lastFaceDetectTime = 0;
-        const FACE_DETECT_INTERVAL = 150; // Detecta a cada 150ms para não travar o celular
+        const FACE_DETECT_INTERVAL = 150;
 
         // Entidades
         let presents = [];
@@ -213,13 +238,11 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // --- SISTEMA DE LOG PARA DEBUG ---
         function log(msg) {
             console.log(msg);
             debugLog.innerHTML = msg;
         }
 
-        // --- INICIAR MODELO DE ROSTO ---
         async function loadFaceModel() {
             try {
                 log("Carregando gorro do Papai Noel...");
@@ -231,23 +254,20 @@
             }
         }
 
-        // --- INICIAR CÂMERA (ROBUSTO) ---
         async function startCamera() {
             log("Solicitando câmera...");
             retryBtn.style.display = 'none';
 
-            // Verifica se é HTTPS (obrigatório para câmera)
             if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
                 log("ERRO: Use HTTPS! O GitHub Pages suporta, verifique a URL.");
                 return false;
             }
 
             try {
-                // Configurações específicas para mobile
                 const constraints = {
                     audio: false,
                     video: {
-                        facingMode: 'user', // Mudamos para USER (Frontal) para ver o rosto e o gorro!
+                        facingMode: 'user',
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
                     }
@@ -255,8 +275,6 @@
 
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
-                
-                // Promessa de play para garantir que rodou
                 await video.play();
                 
                 cameraWorks = true;
@@ -275,9 +293,7 @@
                 
                 log("⚠️ " + errorMsg + " Usando modo gráfico.");
                 
-                // Mostra botão de tentar de novo
                 retryBtn.style.display = 'inline-block';
-                
                 cameraWorks = false;
                 video.style.display = 'none';
                 filterLayer.style.display = 'none';
@@ -285,11 +301,9 @@
             }
         }
 
-        // --- DETECÇÃO FACIAL ---
         async function detectFaces(timestamp) {
             if (!faceModel || !cameraWorks || !video.readyState === 4) return;
             
-            // Throttle para performance (não roda todo frame)
             if (timestamp - lastFaceDetectTime < FACE_DETECT_INTERVAL) return;
             lastFaceDetectTime = timestamp;
 
@@ -299,7 +313,6 @@
             if (predictions.length > 0) {
                 detectedFaces = predictions;
             } else {
-                // Mantém o rosto antigo por um tempinho para evitar piscar, ou limpa se demorar
                 if (timestamp - lastFaceDetectTime > 500) detectedFaces = [];
             }
         }
@@ -307,11 +320,9 @@
         function drawSantaHat(ctx, face) {
             const start = face.topLeft;
             const end = face.bottomRight;
-            const faceWidth = end[0] - start[0]; // width no video
-            // const faceHeight = end[1] - start[1]; // height no video
+            const faceWidth = end[0] - start[0];
 
             // MATEMÁTICA DE MAPEAMENTO (Object-Fit: Cover)
-            // Precisamos traduzir as coordenadas do vídeo (ex: 640x480) para a tela (ex: 360x800)
             const videoW = video.videoWidth;
             const videoH = video.videoHeight;
             const screenW = canvas.width;
@@ -323,66 +334,59 @@
             let scale, offsetX, offsetY;
 
             if (screenRatio > videoRatio) {
-                // Tela é mais larga que o vídeo (corta topo/base)
                 scale = screenW / videoW;
                 offsetX = 0;
                 offsetY = (videoH * scale - screenH) / 2;
             } else {
-                // Tela é mais alta que o vídeo (corta laterais)
                 scale = screenH / videoH;
                 offsetX = (videoW * scale - screenW) / 2;
                 offsetY = 0;
             }
-
-            // Converter coordenadas do rosto
-            // Como é câmera frontal, às vezes precisa espelhar o X dependendo do CSS. 
-            // O CSS atual não tem scaleX(-1), então assume padrão.
-            // Se o rosto parecer invertido, ajustamos o X.
             
             const faceX = (start[0] * scale) - offsetX;
             const faceY = (start[1] * scale) - offsetY;
             const scaledFaceWidth = faceWidth * scale;
 
-            // Desenhar o Gorro
-            ctx.save();
+            // --- AJUSTE DE POSIÇÃO DO GORRO ---
+            // Antes estava + (scaledFaceWidth * 0.2), o que fazia descer.
+            // Agora vamos subtrair para subir.
             
-            // Posição: Centro da cabeça, no topo
             const hatCenterX = faceX + (scaledFaceWidth / 2);
-            const hatBottomY = faceY + (scaledFaceWidth * 0.2); // Um pouco abaixo do topo da testa
-            const hatWidth = scaledFaceWidth * 1.5; // Mais largo que a cabeça
+            // Posiciona o gorro um pouco acima da linha da testa
+            const hatBottomY = faceY - (scaledFaceWidth * 0.1); 
+            
+            const hatWidth = scaledFaceWidth * 1.5;
             const hatHeight = hatWidth * 1.2;
 
+            ctx.save();
             ctx.translate(hatCenterX, hatBottomY);
             
-            // Sombra
             ctx.shadowColor = "rgba(0,0,0,0.5)";
             ctx.shadowBlur = 10;
 
-            // 1. Parte Vermelha (Triângulo Curvo)
+            // 1. Gorro Vermelho
             ctx.beginPath();
             ctx.moveTo(-hatWidth/2, 0);
-            // Curva para a ponta caída
             ctx.quadraticCurveTo(0, -hatHeight, hatWidth/2, 0); 
-            // Curva da base (testa)
             ctx.quadraticCurveTo(0, -20, -hatWidth/2, 0);
-            ctx.fillStyle = "#D42426"; // Vermelho Natal
+            ctx.fillStyle = "#D42426"; 
             ctx.fill();
 
-            // 2. Ponta caída (dobra do gorro)
+            // 2. Ponta caída
             ctx.beginPath();
             ctx.moveTo(hatWidth/4, -hatHeight/1.5);
             ctx.quadraticCurveTo(hatWidth/1.2, -hatHeight/2, hatWidth/1.4, -hatHeight/4);
-            ctx.lineTo(0, -hatHeight/2); // Volta pra dentro pra esconder
+            ctx.lineTo(0, -hatHeight/2); 
             ctx.fillStyle = "#D42426";
             ctx.fill();
 
-            // 3. Pompom (na ponta da dobra)
+            // 3. Pompom
             ctx.beginPath();
             ctx.arc(hatWidth/1.4, -hatHeight/4, hatWidth/6, 0, Math.PI*2);
             ctx.fillStyle = "#FFFFFF";
             ctx.fill();
 
-            // 4. Base Branca (Felpuda)
+            // 4. Base Branca
             ctx.beginPath();
             ctx.roundRect(-hatWidth/1.8, -10, hatWidth * 1.1, hatWidth/4, 20);
             ctx.fillStyle = "#FFFFFF";
@@ -391,7 +395,6 @@
             ctx.restore();
         }
 
-        // --- LÓGICA DO JOGO ---
         class Present {
             constructor() {
                 this.size = 60 + Math.random() * 30;
@@ -509,16 +512,166 @@
             if (lives <= 0) gameOver();
         }
 
+        // --- SISTEMA DE FOTO FINAL ---
+        function createSelfie() {
+            // 1. Limpa o canvas para desenhar a cena final
+            ctx.clearRect(0, 0, width, height);
+
+            // 2. Desenha o vídeo da câmera (cropado corretamente)
+            if (cameraWorks) {
+                const vidRatio = video.videoWidth / video.videoHeight;
+                const screenRatio = width / height;
+                let sx, sy, sWidth, sHeight;
+
+                if (screenRatio > vidRatio) {
+                    sWidth = video.videoWidth;
+                    sHeight = video.videoWidth / screenRatio;
+                    sx = 0;
+                    sy = (video.videoHeight - sHeight) / 2;
+                } else {
+                    sHeight = video.videoHeight;
+                    sWidth = video.videoHeight * screenRatio;
+                    sx = (video.videoWidth - sWidth) / 2;
+                    sy = 0;
+                }
+                
+                ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, width, height);
+                
+                if (detectedFaces.length > 0) {
+                    detectedFaces.forEach(face => drawSantaHat(ctx, face));
+                }
+            } else {
+                // Fundo gráfico caso não tenha câmera
+                let grad = ctx.createLinearGradient(0,0,0,height);
+                grad.addColorStop(0, "#004d00");
+                grad.addColorStop(1, "#800000");
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            // 4. MOLDURA DE NATAL (Frame Global)
+            // Borda externa festiva
+            ctx.lineWidth = 15;
+            ctx.strokeStyle = "#D42426"; // Vermelho Natal
+            ctx.strokeRect(0, 0, width, height);
+            
+            // Borda interna dourada
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = "#FFD700"; // Dourado
+            ctx.strokeRect(15, 15, width-30, height-30);
+
+            // Cantos Decorativos (Círculos Dourados)
+            ctx.fillStyle = "#FFD700";
+            const cornerR = 12;
+            const pad = 15;
+            ctx.beginPath(); ctx.arc(pad, pad, cornerR, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(width-pad, pad, cornerR, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(pad, height-pad, cornerR, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(width-pad, height-pad, cornerR, 0, Math.PI*2); ctx.fill();
+
+            // 5. MENSAGEM (ESTILO CARTÃO ELEGANTE)
+            // Definir dimensões do cartão
+            const cardMargin = 40;
+            const cardW = width - (cardMargin * 2);
+            // Altura dinâmica baseada na largura, mas com limites
+            const cardH = Math.min(height * 0.3, 200); 
+            const cardX = cardMargin;
+            const cardY = height - cardH - 50; // 50px de margem inferior
+
+            // Desenhar Fundo do Cartão (Gradiente e Sombra)
+            ctx.save();
+            // Sombra para destacar do vídeo
+            ctx.shadowColor = "rgba(0,0,0,0.7)";
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetY = 10;
+
+            // Gradiente do Cartão (Verde muito escuro para Vermelho muito escuro)
+            const grd = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
+            grd.addColorStop(0, "rgba(20, 50, 30, 0.95)"); 
+            grd.addColorStop(1, "rgba(60, 10, 10, 0.95)");
+            ctx.fillStyle = grd;
+
+            // Desenha Retângulo com cantos arredondados (Compatível)
+            const r = 20; // Raio
+            ctx.beginPath();
+            ctx.moveTo(cardX + r, cardY);
+            ctx.arcTo(cardX + cardW, cardY, cardX + cardW, cardY + cardH, r);
+            ctx.arcTo(cardX + cardW, cardY + cardH, cardX, cardY + cardH, r);
+            ctx.arcTo(cardX, cardY + cardH, cardX, cardY, r);
+            ctx.arcTo(cardX, cardY, cardX + cardW, cardY, r);
+            ctx.closePath();
+            ctx.fill();
+
+            // Borda fina no cartão
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "rgba(255, 215, 0, 0.5)"; // Dourado semi-transparente
+            ctx.stroke();
+            ctx.restore();
+
+            // --- CONTEÚDO DO TEXTO ---
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const centerX = width / 2;
+            
+            // Posições verticais relativas
+            let currentY = cardY + (cardH * 0.25);
+
+            // 1. TÍTULO: Metaverse Agency
+            let fontSizeTitle = Math.min(cardW * 0.09, 32);
+            ctx.font = `bold ${fontSizeTitle}px "Segoe UI", Arial, sans-serif`;
+            ctx.fillStyle = "#FFD700"; // Dourado
+            ctx.shadowColor = "rgba(0,0,0,0.8)";
+            ctx.shadowBlur = 4;
+            ctx.fillText("Metaverse Agency", centerX, currentY);
+
+            // 2. Subtítulo: "deseja um Feliz Natal!"
+            currentY += fontSizeTitle * 1.2;
+            let fontSizeSub = Math.min(cardW * 0.055, 18);
+            ctx.font = `${fontSizeSub}px "Segoe UI", Arial, sans-serif`;
+            ctx.fillStyle = "#FFFFFF";
+            ctx.shadowBlur = 0; // Remove sombra pesada para texto pequeno
+            ctx.fillText("deseja a você um Feliz Natal!", centerX, currentY);
+
+            // 3. Linha Divisória
+            currentY += fontSizeSub * 1.2;
+            ctx.beginPath();
+            ctx.moveTo(centerX - 40, currentY);
+            ctx.lineTo(centerX + 40, currentY);
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // 4. Frase de Efeito (em 2 linhas para garantir leitura)
+            currentY += fontSizeSub; // Espaço após linha
+            let fontSizeBody = Math.min(cardW * 0.05, 16);
+            ctx.font = `italic ${fontSizeBody}px "Segoe UI", Georgia, serif`;
+            ctx.fillStyle = "#E0E0E0"; // Cinza claro/Branco suave
+            
+            ctx.fillText("Independentemente do número de presentes,", centerX, currentY);
+            currentY += fontSizeBody * 1.3;
+            ctx.fillText("que haja muita alegria!", centerX, currentY);
+
+            // 6. Retorna a imagem em Base64
+            return canvas.toDataURL('image/png');
+        }
+
         function gameOver() {
             gameActive = false;
-            // AQUI ESTÁ A ALTERAÇÃO: Font-size usando CLAMP para responsividade
+            
+            // Gera a foto final
+            const photoData = createSelfie();
+
             overlay.innerHTML = `
                 <h1>🎄 Fim de Jogo! 🎄</h1>
-                <p style="font-size: 1.5rem">Pontuação: ${score} 🎁</p>
-                <p style="margin: 20px auto; max-width: 90%; font-size: clamp(1.1rem, 4vw + 0.5rem, 2.2rem); line-height: 1.3; color: #ffeb3b; text-shadow: 2px 2px 5px rgba(0,0,0,0.9);">
-                    A <strong>Metaverse Agency</strong> deseja a você um Feliz Natal!<br>
-                    Independentemente do número de presentes, que haja muita alegria!
-                </p>
+                <p style="font-size: 1.2rem">Pontuação: ${score} 🎁</p>
+                
+                <img id="final-photo" src="${photoData}" alt="Sua Selfie de Natal">
+                
+                <a href="${photoData}" download="minha-selfie-natal-metaverse.png" class="download-btn">
+                    ⬇️ Baixar Foto
+                </a>
+
+                <br>
                 <button onclick="window.location.reload()">Jogar Novamente</button>
             `;
             overlay.style.display = 'flex';
@@ -531,7 +684,6 @@
             ctx.clearRect(0, 0, width, height);
 
             if (!cameraWorks) {
-                // Fallback Natalino
                 let grad = ctx.createLinearGradient(0,0,0,height);
                 grad.addColorStop(0, "#004d00");
                 grad.addColorStop(1, "#800000");
@@ -540,10 +692,7 @@
                 ctx.fillStyle = "rgba(255,255,255,0.2)";
                 for(let i=0; i<30; i++) ctx.fillRect(Math.random()*width, Math.random()*height, 2, 2); 
             } else {
-                // Tenta detectar rostos se a câmera estiver ligada
                 detectFaces(timestamp);
-                
-                // Desenha os gorros detectados
                 detectedFaces.forEach(face => drawSantaHat(ctx, face));
             }
 
@@ -559,15 +708,9 @@
             requestAnimationFrame(loop);
         }
 
-        // STARTUP
         async function initGame() {
-            // Carrega modelo de rosto em paralelo
             loadFaceModel();
-
-            // Tenta iniciar a câmera
             await startCamera();
-            
-            // Inicia o jogo independente do resultado da câmera
             overlay.style.display = 'none';
             score = 0;
             lives = 3;
